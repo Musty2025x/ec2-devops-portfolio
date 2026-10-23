@@ -1,0 +1,17 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: webhook-placeholder
+  group_by: ["alertname", "job"]
+  group_wait: 20s
+  group_interval: 2m
+  repeat_interval: 2h
+
+receivers:
+  # Replace this placeholder with a supported Slack, Discord, or email receiver.
+  # Keep webhook URLs and credentials in a secret-managed config, never in Git.
+  - name: webhook-placeholder
+    webhook_configs:
+      - url: "http://127.0.0.1:9999/REPLACE_WITH_SECRET_MANAGED_WEBHOOK"
+        send_resolved: true

@@ -1,0 +1,49 @@
+name: Promote to Production
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Previously tested immutable Git SHA image tag"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate SHA format
+        env:
+          TAG: ${{ inputs.image_tag }}
+        run: |
+          [[ "$TAG" =~ ^[0-9a-f]{7,40}$ ]] || { echo "Expected a Git SHA image tag"; exit 1; }
+      - name: Configure SSH safely
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Deploy approved SHA
+        env:
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          TAG: ${{ inputs.image_tag }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "$USER@$HOST" \
+            "cd /opt/team-c-app && sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=$TAG/' .env && docker compose --env-file .env -f compose/server.yml pull && docker compose --env-file .env -f compose/server.yml up -d --remove-orphans"
+      - name: Verify production health
+        env:
+          HEALTH_URL: ${{ secrets.PRODUCTION_HEALTH_URL }}
+        run: |
+          test -n "$HEALTH_URL"
+          bash scripts/healthcheck.sh "$HEALTH_URL" 12

@@ -1,0 +1,7 @@
+aws_region       = "eu-west-2"
+project_name     = "team-c"
+environment      = "staging"
+instance_type    = "t3.micro"
+ami_id           = "ami-REPLACE_WITH_CURRENT_AL2023_AMI"
+key_name         = "REPLACE_WITH_EXISTING_EC2_KEY_PAIR"
+allowed_ssh_cidr = "REPLACE_WITH_YOUR_PUBLIC_IP/32"

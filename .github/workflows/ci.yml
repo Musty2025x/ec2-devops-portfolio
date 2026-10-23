@@ -1,0 +1,93 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  app-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            sample-app/client/package-lock.json
+            sample-app/server/package-lock.json
+      - name: Install and test upstream app
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Verify actual upstream scripts before relying on these commands.
+          for dir in sample-app/client sample-app/server; do
+            if [[ -f "$dir/package.json" ]]; then
+              (cd "$dir" && npm ci)
+              (cd "$dir" && npm run lint --if-present)
+              (cd "$dir" && npm test --if-present -- --runInBand)
+              (cd "$dir" && npm audit --omit=dev --audit-level=high)
+            fi
+          done
+
+  build-scan:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    needs: app-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build API image
+        run: docker build -t team-c-api:${{ github.sha }} sample-app/server
+      - name: Build frontend image
+        run: docker build -t team-c-frontend:${{ github.sha }} sample-app/client
+      - name: Scan API image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: team-c-api:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+      - name: Scan frontend image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: team-c-frontend:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: sample-app/server
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/team-c-api:${{ github.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: sample-app/client
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/team-c-frontend:${{ github.sha }}

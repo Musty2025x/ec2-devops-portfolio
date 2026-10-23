@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+terraform/.terraform/
+terraform/terraform.tfstate*
+terraform/terraform.tfvars
+terraform/crash.log
+*.pem
+*.key
+.DS_Store
+node_modules/

@@ -1,0 +1,11 @@
+# Copy into backend.tf after creating a dedicated private S3 bucket.
+# Terraform backend blocks cannot use variables.
+terraform {
+  backend "s3" {
+    bucket       = "REPLACE_WITH_UNIQUE_TERRAFORM_STATE_BUCKET"
+    key          = "team-c/ec2/terraform.tfstate"
+    region       = "eu-west-2"
+    encrypt      = true
+    use_lockfile = true
+  }
+}

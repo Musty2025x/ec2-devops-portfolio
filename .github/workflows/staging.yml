@@ -1,0 +1,57 @@
+name: Deploy Staging
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Git SHA image tag to deploy (defaults to current main SHA)"
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Resolve image tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: echo "value=${INPUT_TAG:-$RUN_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Configure SSH safely
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Deploy immutable image
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "$USER@$HOST" \
+            "cd /opt/team-c-app && sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=$TAG/' .env && docker compose --env-file .env -f compose/server.yml pull && docker compose --env-file .env -f compose/server.yml up -d --remove-orphans"
+      - name: Verify staging health
+        env:
+          HEALTH_URL: ${{ secrets.STAGING_HEALTH_URL }}
+        run: |
+          test -n "$HEALTH_URL"
+          bash scripts/healthcheck.sh "$HEALTH_URL" 12

@@ -1,0 +1,11 @@
+groups:
+  - name: availability
+    rules:
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Monitoring target is down"
+          description: "Target {{ $labels.instance }} for job {{ $labels.job }} has been unreachable for more than one minute."
