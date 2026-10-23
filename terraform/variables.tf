@@ -30,5 +30,5 @@ variable "key_name" {
 }
 variable "allowed_ssh_cidr" {
   type        = string
-  description = "0.0.0.0/32"
+  description = "CIDR block to allow SSH access to the EC2 instance"
 }
